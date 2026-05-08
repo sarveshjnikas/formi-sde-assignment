@@ -1,7 +1,7 @@
 # Post-Call Processing Pipeline — Design Document
 
-**Author:** [Your Name]
-**Date:** [Date]
+**Author:** Sarvesh Nikas
+**Date:** 10/05/2026
 
 ---
 
@@ -9,7 +9,7 @@
 
 _State every assumption you made about the business, system, or environment. Be specific. These will be discussed in the follow-up._
 
-1. ...
+1. ... 
 2. ...
 
 ---
@@ -17,6 +17,13 @@ _State every assumption you made about the business, system, or environment. Be 
 ## 2. Problem Diagnosis
 
 _Before designing anything: what is actually broken, and why does it break at scale? In your own words._
+
+1. No per-customer token budgeting. A large campaign from one customer can consume most of the LLM capacity and worker time, causing other customers’ calls to be delayed (no fairness/isolation).
+2. Recording handling is brittle. The system waits a fixed 45 seconds for the recording and then tries once; recordings that appear later are effectively skipped with no retry or visibility.
+3. Poor traceability. There is no clear, step-by-step audit trail per interaction (enqueued → recording → LLM → downstream actions), making debugging slow and guessy.
+4. Retries are unreliable and inconsistent. Failures are retried via both Celery retry and a separate Redis retry queue; they don’t coordinate (duplicate processing risk) and both depend on Redis (Redis failure can lose work).
+5. No dead-letter handling. After retry_exhausted, the system drops the job instead of persisting it to a dead-letter queue/store for investigation and replay.
+6. No LLM rate-limit awareness. LLM providers enforce RPM/TPM limits; the current system sends requests immediately during bursts, which would hit rate limits (429) and create a growing backlog.
 
 ---
 
