@@ -62,5 +62,11 @@ class Settings:
     POSTCALL_MAX_RETRIES: int = 3
     POSTCALL_RETRY_DELAY: int = 60  # Fixed delay — not exponential backoff
 
+    # Legacy Celery pipeline (kept temporarily during migration to Postgres-backed jobs).
+    # If false, the webhook will not enqueue the Celery task for long transcripts.
+    ENABLE_LEGACY_CELERY_PIPELINE: bool = (
+        os.getenv("ENABLE_LEGACY_CELERY_PIPELINE", "false").lower() == "true"
+    )
+
 
 settings = Settings()

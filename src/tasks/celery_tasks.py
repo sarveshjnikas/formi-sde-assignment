@@ -42,7 +42,6 @@ from src.tasks.celery_app import celery_app
 from src.services.post_call_processor import PostCallProcessor, PostCallContext
 from src.services.recording import fetch_and_upload_recording
 from src.services.signal_jobs import trigger_signal_jobs, update_lead_stage
-from src.services.retry_queue import retry_queue
 from src.services.metrics import metrics_tracker
 
 logger = logging.getLogger(__name__)
@@ -90,13 +89,6 @@ def process_interaction_end_background_task(self, payload: Dict[str, Any]):
         # Failed tasks go into PostCallRetryQueue (Redis) AND Celery retries.
         # Two retry mechanisms that don't know about each other. An interaction
         # can end up being processed twice if both fire.
-        loop.run_until_complete(
-            retry_queue.enqueue_retry(
-                interaction_id=payload["interaction_id"],
-                error=str(e),
-                payload=payload,
-            )
-        )
         raise self.retry(exc=e)
     finally:
         loop.close()
