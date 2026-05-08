@@ -176,6 +176,7 @@ async def end_interaction(
                 interaction_id=interaction_id,
                 customer_id=UUID(customer_id) if customer_id else None,
                 job_type="recording",
+                # TODO(lanes): lane is hardcoded for now; will be derived from transcript/business priority (hot/cold/skip).
                 lane="cold",
                 payload={
                     "interaction_id": str(interaction_id),
