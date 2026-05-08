@@ -32,8 +32,13 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.services.audit import log_audit_event
+from src.utils.db import get_db
 
 from src.services.signal_jobs import trigger_signal_jobs, update_lead_stage
 from src.tasks.celery_tasks import process_interaction_end_background_task
@@ -67,6 +72,7 @@ async def end_interaction(
     interaction_id: UUID,
     request: InteractionEndRequest,
     background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
 ):
     """
     End an interaction and trigger post-call processing.
@@ -95,6 +101,22 @@ async def end_interaction(
 
         transcript = interaction.get("conversation_data", {}).get("transcript", [])
         is_short = len(transcript) < 4
+
+        customer_id = None
+        try:
+            if interaction.get("customer_id"):
+                customer_id = str(UUID(str(interaction.get("customer_id"))))
+        except Exception:
+            customer_id = None
+
+        await log_audit_event(
+            db,
+            event_type="interaction_ended",
+            interaction_id=str(interaction_id),
+            session_id=str(session_id),
+            customer_id=customer_id,
+            data={"is_short_transcript": is_short},
+        )
 
         if is_short:
             # Fewer than 4 turns: wrong number, immediate hangup, network drop.

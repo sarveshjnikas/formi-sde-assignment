@@ -79,6 +79,22 @@ CREATE INDEX idx_interactions_customer ON interactions(customer_id);
 CREATE INDEX idx_interactions_call_sid ON interactions(call_sid);
 CREATE INDEX idx_interactions_status ON interactions(status);
 
+-- Audit trail: append-only events per interaction
+CREATE TABLE audit_events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    interaction_id UUID NOT NULL,
+    customer_id UUID,
+    event_type VARCHAR(100) NOT NULL,
+    job_type VARCHAR(50),
+    job_id UUID,
+    data JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_audit_events_interaction ON audit_events(interaction_id);
+CREATE INDEX idx_audit_events_customer ON audit_events(customer_id);
+CREATE INDEX idx_audit_events_created_at ON audit_events(created_at);
+
 -- Seed data: sample interactions for testing
 -- (Uses fixed UUIDs for reproducibility)
 
