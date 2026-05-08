@@ -186,6 +186,16 @@ async def end_interaction(
                 },
             )
 
+            llm_job_id = await enqueue_job(
+                db,
+                interaction_id=interaction_id,
+                customer_id=UUID(customer_id) if customer_id else None,
+                job_type="llm",
+                # TODO(lanes): lane is hardcoded for now; will be derived from transcript/business priority (hot/cold/skip).
+                lane="cold",
+                payload=celery_payload,
+            )
+
             await log_audit_event(
                 db,
                 event_type="job_created",
@@ -194,6 +204,16 @@ async def end_interaction(
                 customer_id=customer_id,
                 job_type="recording",
                 job_id=str(recording_job_id),
+                data={"lane": "cold"},
+            )
+            await log_audit_event(
+                db,
+                event_type="job_created",
+                interaction_id=str(interaction_id),
+                session_id=str(session_id),
+                customer_id=customer_id,
+                job_type="llm",
+                job_id=str(llm_job_id),
                 data={"lane": "cold"},
             )
 

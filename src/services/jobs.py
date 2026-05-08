@@ -234,6 +234,35 @@ async def mark_job_failed(
     await db.commit()
 
 
+async def requeue_job(
+    db: AsyncSession,
+    *,
+    job_id: UUID,
+    delay_seconds: int,
+    now: Optional[datetime] = None,
+) -> None:
+    ts = now or datetime.now(timezone.utc)
+    available_at = ts + timedelta(seconds=delay_seconds)
+
+    await db.execute(
+        text(
+            """
+            UPDATE postcall_jobs
+            SET
+                status = 'queued',
+                available_at = :available_at,
+                claimed_at = NULL,
+                lease_expires_at = NULL,
+                claimed_by = NULL,
+                updated_at = NOW()
+            WHERE id = :job_id
+            """
+        ),
+        {"job_id": str(job_id), "available_at": available_at},
+    )
+    await db.commit()
+
+
 async def dead_letter_job(
     db: AsyncSession,
     *,

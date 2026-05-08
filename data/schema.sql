@@ -140,6 +140,16 @@ CREATE TABLE dead_letters (
 CREATE INDEX idx_dead_letters_interaction ON dead_letters(interaction_id);
 CREATE INDEX idx_dead_letters_failed_at ON dead_letters(failed_at);
 
+-- LLM rate limit counters (global, per-minute)
+CREATE TABLE llm_rate_limit_windows (
+    window_start TIMESTAMPTZ PRIMARY KEY,
+    requests_used INTEGER NOT NULL DEFAULT 0,
+    tokens_used INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_llm_rate_limit_updated_at ON llm_rate_limit_windows(updated_at);
+
 -- Seed data: sample interactions for testing
 -- (Uses fixed UUIDs for reproducibility)
 
