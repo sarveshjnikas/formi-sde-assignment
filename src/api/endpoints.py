@@ -217,16 +217,46 @@ async def end_interaction(
                 data={"lane": "cold"},
             )
 
-            task = process_interaction_end_background_task.apply_async(
-                args=[celery_payload],
-                queue="postcall_processing",  # One queue to rule them all
+            downstream_job_id = await enqueue_job(
+                db,
+                interaction_id=interaction_id,
+                customer_id=UUID(customer_id) if customer_id else None,
+                job_type="downstream",
+                # TODO(lanes): lane is hardcoded for now; will be derived from transcript/business priority (hot/cold/skip).
+                lane="cold",
+                payload={
+                    "interaction_id": str(interaction_id),
+                    "session_id": str(session_id),
+                    "lead_id": str(interaction["lead_id"]),
+                    "campaign_id": str(interaction["campaign_id"]),
+                    "analysis_result": {},
+                    "call_stage": "processing",
+                },
             )
+
+            await log_audit_event(
+                db,
+                event_type="job_created",
+                interaction_id=str(interaction_id),
+                session_id=str(session_id),
+                customer_id=customer_id,
+                job_type="downstream",
+                job_id=str(downstream_job_id),
+                data={"lane": "cold"},
+            )
+
+            task = None
+            if settings.ENABLE_LEGACY_CELERY_PIPELINE:
+                task = process_interaction_end_background_task.apply_async(
+                    args=[celery_payload],
+                    queue="postcall_processing",  # One queue to rule them all
+                )
 
             logger.info(
                 "postcall_enqueued",
                 extra={
                     "interaction_id": str(interaction_id),
-                    "celery_task_id": task.id,
+                    "celery_task_id": (task.id if task else None),
                     # Notice what's NOT logged here: no queue depth, no estimated
                     # wait time, no indication of how backed up we are.
                 },
