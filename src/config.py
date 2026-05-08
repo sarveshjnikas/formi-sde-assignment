@@ -28,6 +28,10 @@ class Settings:
     LLM_API_KEY: str = os.getenv("LLM_API_KEY", "sk-mock-key-for-assessment")
     LLM_TOKENS_PER_MINUTE: int = int(os.getenv("LLM_TOKENS_PER_MINUTE", "90000"))
     LLM_REQUESTS_PER_MINUTE: int = int(os.getenv("LLM_REQUESTS_PER_MINUTE", "500"))
+    # Default per-customer token budget (can be overridden via DB table).
+    CUSTOMER_TOKENS_PER_MINUTE_DEFAULT: int = int(
+        os.getenv("CUSTOMER_TOKENS_PER_MINUTE_DEFAULT", "30000")
+    )
 
     # Average tokens consumed per post-call analysis (measured from prod logs).
     # Useful if you're trying to estimate how many calls can be processed per

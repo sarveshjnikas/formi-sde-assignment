@@ -17,7 +17,7 @@ from src.services.jobs import (
     requeue_job,
 )
 from src.services.post_call_processor import PostCallContext, PostCallProcessor
-from src.services.rate_limiter import acquire_llm_capacity
+from src.services.rate_limiter import acquire_customer_token_budget, acquire_llm_capacity
 from src.utils.db import async_session_factory
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,25 @@ async def process_one_llm_job(db: AsyncSession, *, job: Job) -> None:
     customer_id = job.customer_id
 
     tokens_est = _estimate_tokens(payload)
+    if customer_id is not None:
+        cust_decision = await acquire_customer_token_budget(
+            db, customer_id=customer_id, tokens=tokens_est
+        )
+        if not cust_decision.allowed:
+            await log_audit_event(
+                db,
+                event_type="job_deferred_customer_budget",
+                interaction_id=str(interaction_id),
+                customer_id=str(customer_id),
+                job_type=job.job_type,
+                job_id=str(job.id),
+                data={"retry_after_seconds": cust_decision.retry_after_seconds},
+            )
+            await requeue_job(
+                db, job_id=job.id, delay_seconds=cust_decision.retry_after_seconds
+            )
+            return
+
     decision = await acquire_llm_capacity(db, tokens=tokens_est)
 
     if not decision.allowed:

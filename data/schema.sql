@@ -150,6 +150,24 @@ CREATE TABLE llm_rate_limit_windows (
 
 CREATE INDEX idx_llm_rate_limit_updated_at ON llm_rate_limit_windows(updated_at);
 
+-- Per-customer token budgeting (per-minute windows)
+CREATE TABLE customer_llm_budgets (
+    customer_id UUID PRIMARY KEY,
+    tokens_per_minute_limit INTEGER NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE customer_llm_budget_windows (
+    customer_id UUID NOT NULL,
+    window_start TIMESTAMPTZ NOT NULL,
+    tokens_used INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (customer_id, window_start)
+);
+
+CREATE INDEX idx_customer_llm_budget_windows_updated_at ON customer_llm_budget_windows(updated_at);
+
 -- Seed data: sample interactions for testing
 -- (Uses fixed UUIDs for reproducibility)
 
