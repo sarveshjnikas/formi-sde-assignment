@@ -38,6 +38,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.services.audit import log_audit_event
+from src.services.jobs import enqueue_job
 from src.utils.db import get_db
 
 from src.services.signal_jobs import trigger_signal_jobs, update_lead_stage
@@ -170,6 +171,30 @@ async def end_interaction(
                 "ended_at": datetime.utcnow().isoformat(),
                 "exotel_account_id": interaction.get("exotel_account_id"),
             }
+            recording_job_id = await enqueue_job(
+                db,
+                interaction_id=interaction_id,
+                customer_id=UUID(customer_id) if customer_id else None,
+                job_type="recording",
+                lane="cold",
+                payload={
+                    "interaction_id": str(interaction_id),
+                    "session_id": str(session_id),
+                    "call_sid": request.call_sid,
+                    "exotel_account_id": interaction.get("exotel_account_id"),
+                },
+            )
+
+            await log_audit_event(
+                db,
+                event_type="job_created",
+                interaction_id=str(interaction_id),
+                session_id=str(session_id),
+                customer_id=customer_id,
+                job_type="recording",
+                job_id=str(recording_job_id),
+                data={"lane": "cold"},
+            )
 
             task = process_interaction_end_background_task.apply_async(
                 args=[celery_payload],
