@@ -95,6 +95,51 @@ CREATE INDEX idx_audit_events_interaction ON audit_events(interaction_id);
 CREATE INDEX idx_audit_events_customer ON audit_events(customer_id);
 CREATE INDEX idx_audit_events_created_at ON audit_events(created_at);
 
+-- Durable job queue for post-call processing
+CREATE TABLE postcall_jobs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    interaction_id UUID NOT NULL,
+    customer_id UUID,
+
+    job_type VARCHAR(50) NOT NULL,
+    lane VARCHAR(20) NOT NULL,
+
+    status VARCHAR(20) NOT NULL DEFAULT 'queued',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 10,
+
+    available_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    claimed_at TIMESTAMPTZ,
+    lease_expires_at TIMESTAMPTZ,
+    claimed_by VARCHAR(100),
+
+    payload JSONB NOT NULL DEFAULT '{}',
+    last_error TEXT,
+
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_postcall_jobs_type_status_available ON postcall_jobs(job_type, status, available_at);
+CREATE INDEX idx_postcall_jobs_interaction ON postcall_jobs(interaction_id);
+CREATE INDEX idx_postcall_jobs_customer ON postcall_jobs(customer_id);
+CREATE INDEX idx_postcall_jobs_lease ON postcall_jobs(status, lease_expires_at);
+
+-- Dead letter queue: store jobs that exhausted retries
+CREATE TABLE dead_letters (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    job_id UUID NOT NULL,
+    interaction_id UUID NOT NULL,
+    customer_id UUID,
+    job_type VARCHAR(50) NOT NULL,
+    payload JSONB NOT NULL DEFAULT '{}',
+    error TEXT NOT NULL,
+    failed_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_dead_letters_interaction ON dead_letters(interaction_id);
+CREATE INDEX idx_dead_letters_failed_at ON dead_letters(failed_at);
+
 -- Seed data: sample interactions for testing
 -- (Uses fixed UUIDs for reproducibility)
 
