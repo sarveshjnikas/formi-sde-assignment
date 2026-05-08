@@ -314,3 +314,36 @@ async def dead_letter_job(
         {"job_id": str(job_id)},
     )
     await db.commit()
+
+
+async def requeue_stale_claims(
+    db: AsyncSession,
+    *,
+    now: Optional[datetime] = None,
+) -> int:
+    """Requeue claimed jobs whose lease has expired.
+
+    If a worker crashes after claiming a job, the job becomes runnable again
+    once its lease expires.
+    """
+    ts = now or datetime.now(timezone.utc)
+
+    res = await db.execute(
+        text(
+            """
+            UPDATE postcall_jobs
+            SET
+                status = 'queued',
+                claimed_at = NULL,
+                lease_expires_at = NULL,
+                claimed_by = NULL,
+                updated_at = NOW()
+            WHERE status = 'claimed'
+              AND lease_expires_at IS NOT NULL
+              AND lease_expires_at < :now
+            """
+        ),
+        {"now": ts},
+    )
+    await db.commit()
+    return int(getattr(res, "rowcount", 0) or 0)
