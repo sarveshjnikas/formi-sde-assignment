@@ -312,16 +312,20 @@ The main change is internal: on call-end the endpoint writes durable jobs (`reco
 
 - `requeue_stale_claims(...)` exists but needs a periodic watchdog runner in production.
 - Rate limiting is per-minute windows (safe and simple) rather than a smoother token bucket over sub-minute intervals.
-- Hot jobs are classified correctly at ingest but not yet prioritised ahead of cold jobs in the worker claim query — `lane` needs to be added to the `ORDER BY` in `claim_next_job`.
-- Downstream job currently uses placeholder analysis payload; wiring it to consume stored LLM output cleanly would be the next integration step.
+- Hot jobs are classified correctly at ingest but worker claim query orders by `available_at` only — lane is not yet in the ORDER BY, so hot jobs only get priority if they arrive earlier.
+- Downstream job currently receives a placeholder `analysis_result: {}`; the production fix is the LLM worker updating `interactions.interaction_metadata` post-analysis, which the downstream worker then reads before triggering CRM/signal actions.
+- The three job inserts in the endpoint (recording, llm, downstream) are committed separately rather than in a single transaction — a failure between inserts can leave partial job state. Production fix is wrapping all three in one `BEGIN/COMMIT`.
+- `asyncio.create_task()` calls remain in the long-transcript path of the endpoint for signal_jobs and lead_stage. These are redundant (the downstream job handles both) and not durable across restarts. They should be removed in favour of relying solely on the downstream worker.
+- Actual token usage from the LLM response is logged per-call but not written to an aggregate counter — "tokens used this hour by customer X" requires log scanning rather than a DB query.
 
 ---
 
 ## 15. What I Would Do With More Time
 
-<!-- _Specific, prioritised list — not a generic wishlist._ -->
-
-1. Prioritize `hot` jobs in the worker claim query by adding `lane` to the `ORDER BY` in `claim_next_job` (`hot` before `cold`, within the same `available_at` window).
-2. Add a small watchdog process to run `requeue_stale_claims(...)` periodically and emit audit events for recovered jobs.
-3. Persist actual token usage as a billing-grade ledger (customer/campaign/interaction) rather than only audit events.
-4. Add a DB-backed end-to-end integration test that runs the workers against a real Postgres container.
+1. Add `CASE lane WHEN 'hot' THEN 0 ELSE 1 END ASC` to the `claim_next_job` ORDER BY so hot jobs are genuinely prioritised ahead of cold in the worker queue.
+2. Wrap the three `enqueue_job` calls in the endpoint in a single DB transaction so partial job state is impossible on failure.
+3. Remove the redundant `asyncio.create_task()` calls from the long-transcript path — downstream worker already handles signal_jobs and lead_stage durably.
+4. Wire downstream worker to read LLM output from `interactions.interaction_metadata` rather than a placeholder payload.
+5. Add a small watchdog process to run `requeue_stale_claims(...)` periodically and emit audit events for recovered jobs.
+6. Persist actual token usage as a billing-grade ledger (customer/campaign/interaction) rather than only audit events.
+7. Add a DB-backed end-to-end integration test that runs the workers against a real Postgres container.
