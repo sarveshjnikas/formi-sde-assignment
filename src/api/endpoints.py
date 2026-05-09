@@ -31,6 +31,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
 from uuid import UUID
+from src.config import settings
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
@@ -42,6 +43,8 @@ from src.services.jobs import enqueue_job
 from src.utils.db import get_db
 
 from src.services.signal_jobs import trigger_signal_jobs, update_lead_stage
+from src.services.lane_classifier import classify_lane
+
 from src.tasks.celery_tasks import process_interaction_end_background_task
 
 logger = logging.getLogger(__name__)
@@ -156,6 +159,7 @@ async def end_interaction(
                 f"{turn.get('role', 'unknown')}: {turn.get('content', '')}"
                 for turn in transcript
             )
+            lane = classify_lane(transcript_text=transcript_text, turn_count=len(transcript))
 
             celery_payload = {
                 "interaction_id": str(interaction_id),
@@ -176,8 +180,7 @@ async def end_interaction(
                 interaction_id=interaction_id,
                 customer_id=UUID(customer_id) if customer_id else None,
                 job_type="recording",
-                # TODO(lanes): lane is hardcoded for now; will be derived from transcript/business priority (hot/cold/skip).
-                lane="cold",
+                lane=lane,
                 payload={
                     "interaction_id": str(interaction_id),
                     "session_id": str(session_id),
@@ -191,8 +194,7 @@ async def end_interaction(
                 interaction_id=interaction_id,
                 customer_id=UUID(customer_id) if customer_id else None,
                 job_type="llm",
-                # TODO(lanes): lane is hardcoded for now; will be derived from transcript/business priority (hot/cold/skip).
-                lane="cold",
+                lane=lane,
                 payload=celery_payload,
             )
 
@@ -204,7 +206,7 @@ async def end_interaction(
                 customer_id=customer_id,
                 job_type="recording",
                 job_id=str(recording_job_id),
-                data={"lane": "cold"},
+                data={"lane": lane},
             )
             await log_audit_event(
                 db,
@@ -214,7 +216,7 @@ async def end_interaction(
                 customer_id=customer_id,
                 job_type="llm",
                 job_id=str(llm_job_id),
-                data={"lane": "cold"},
+                data={"lane": lane},
             )
 
             downstream_job_id = await enqueue_job(
@@ -222,8 +224,7 @@ async def end_interaction(
                 interaction_id=interaction_id,
                 customer_id=UUID(customer_id) if customer_id else None,
                 job_type="downstream",
-                # TODO(lanes): lane is hardcoded for now; will be derived from transcript/business priority (hot/cold/skip).
-                lane="cold",
+                lane=lane,
                 payload={
                     "interaction_id": str(interaction_id),
                     "session_id": str(session_id),
@@ -242,7 +243,7 @@ async def end_interaction(
                 customer_id=customer_id,
                 job_type="downstream",
                 job_id=str(downstream_job_id),
-                data={"lane": "cold"},
+                data={"lane": lane},
             )
 
             task = None
