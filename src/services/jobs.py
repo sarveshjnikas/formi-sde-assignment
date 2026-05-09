@@ -113,7 +113,10 @@ async def claim_next_job(
                     job_type = :job_type
                     AND status = 'queued'
                     AND available_at <= :now
-                ORDER BY available_at ASC, created_at ASC
+                ORDER BY
+                    CASE lane WHEN 'hot' THEN 0 ELSE 1 END ASC,
+                    available_at ASC,
+                    created_at ASC
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
             )

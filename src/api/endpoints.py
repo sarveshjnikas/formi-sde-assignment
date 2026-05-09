@@ -28,7 +28,7 @@ A few things to notice as you read this file:
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from uuid import UUID
 from src.config import settings
@@ -98,7 +98,7 @@ async def end_interaction(
         await _update_interaction_status(
             interaction_id=str(interaction_id),
             status="ENDED",
-            ended_at=datetime.utcnow(),
+            ended_at=datetime.now(timezone.utc),
             duration=request.duration_seconds,
             call_sid=request.call_sid,
         )
@@ -172,7 +172,7 @@ async def end_interaction(
                 "transcript_text": transcript_text,
                 "conversation_data": interaction.get("conversation_data", {}),
                 "additional_data": request.additional_data or {},
-                "ended_at": datetime.utcnow().isoformat(),
+                "ended_at": datetime.now(timezone.utc),
                 "exotel_account_id": interaction.get("exotel_account_id"),
             }
             recording_job_id = await enqueue_job(
