@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 from src.services.post_call_processor import PostCallContext
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -38,7 +38,7 @@ def make_post_call_context(sample_transcripts):
             "transcript_text": transcript_text,
             "conversation_data": {"transcript": transcript},
             "additional_data": {},
-            "ended_at": datetime.utcnow(),
+            "ended_at": datetime.now(timezone.utc),
             "exotel_account_id": "test-exotel-account",
         }
         defaults.update(overrides)

@@ -8,7 +8,7 @@ tests that validate the new architecture.
 
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.services.post_call_processor import PostCallProcessor, PostCallContext
 
@@ -73,7 +73,7 @@ async def test_short_transcript_detected():
             {"role": "customer", "content": "Wrong number"},
         ]},
         additional_data={},
-        ended_at=datetime.utcnow(),
+        ended_at=datetime.now(timezone.utc),
     )
 
     # Short transcript detection exists but is fragile
