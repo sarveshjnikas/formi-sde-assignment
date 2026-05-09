@@ -297,9 +297,14 @@ The main change is internal: on call-end the endpoint writes durable jobs (`reco
 
 ## 13. Trade-offs & Alternatives Considered
 
-| Option | Why Considered | Why Rejected / What You Chose Instead |
-|--------|---------------|--------------------------------------|
-| ... | ... | ... |
+| Option | Why Considered | Why Rejected / What I Chose Instead |
+|---|---|---|
+| SQS/RabbitMQ as job queue instead of Postgres | Standard message queue; simpler worker code | Adds infra dependency; no queryable job state; harder to implement leases and stale-claim recovery without extra DB anyway |
+| Redis for rate limit counters instead of Postgres | Lower latency per counter increment | Same failure mode as the thing we're replacing; Redis restart loses all in-flight rate limit state; Postgres gives durable, queryable windows |
+| Token bucket instead of per-minute windows | Smoother distribution; avoids burst-at-window-boundary | More complex to implement atomically in Postgres; per-minute windows are simple, auditable, and match how LLM providers actually report limits |
+| Separate classification LLM call before full analysis | Better accuracy for hot/cold triage | Doubles LLM requests for every call; keyword matching is fast, free, and good enough for triage — LLM can always reclassify on the full result |
+| Keep Celery, fix its problems | Less code change | Celery's durability story requires persistent broker (RabbitMQ) and result backend changes anyway; Postgres job table gives us the same guarantee with fewer moving parts and full auditability |
+| Fair-share unallocated budget headroom | Better utilisation of spare capacity | Adds coordination complexity (who gets the spare?); simple per-customer cap with platform-level spillover is easier to reason about and audit |
 
 ---
 
