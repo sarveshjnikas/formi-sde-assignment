@@ -244,8 +244,45 @@ CREATE TABLE customer_llm_budget_windows (
 
 ## 11. Security
 
-_What data in this system is sensitive? How do you protect it at rest and in transit?_
+**Sensitive data in this system:**
+- Call transcripts (contain conversation content, customer PII)
+- Lead records (name, phone, email)
+- Call recordings (audio files in S3)
+- LLM API keys and Exotel credentials
 
+**Protection strategy:**
+
+*At rest:*
+- Transcripts stored in `interactions.conversation_data` (JSONB): encrypt the column
+  at the application layer using Fernet (symmetric, key from KMS/env secret) before
+  writing, decrypt on read. Alternatively, use Postgres TDE or RDS encryption
+  if managed infra is available.
+- Recordings in S3: enable SSE-S3 (AES-256) on the bucket. For higher compliance
+  requirements, use SSE-KMS with a customer-managed key.
+- PII fields in `leads` (phone, email): consider field-level encryption or
+  pseudonymisation if the platform needs to comply with DPDP/GDPR.
+
+*In transit:*
+- All API calls (Exotel webhook, LLM provider, CRM) over TLS 1.2+.
+- Exotel webhook endpoint should validate a shared HMAC secret on every
+  `POST /session/.../end` request to prevent replay or spoofed webhooks.
+- Internal service communication (worker → Postgres, worker → Redis) over VPC
+  private networking; no public exposure.
+
+*In audit logs:*
+- `audit_events.data` must never log raw transcript text or PII.
+  Structured events store `interaction_id` for correlation; full transcript
+  is retrieved from `interactions` table only when needed.
+- LLM prompts (which contain the transcript) must not be logged at INFO level
+  in production — only log `interaction_id` and token counts.
+
+*Access control:*
+- Per-customer data isolation: all queries filter by `customer_id`.
+  Row-level security (Postgres RLS) is the right long-term enforcement mechanism,
+  ensuring even a miscoded query cannot leak cross-customer data.
+- Dead-letters table contains full payloads (including transcript) — access
+  should be restricted to on-call engineers via IAM/RBAC, not available to
+  all application service accounts.
 ---
 
 ## 12. API Interface
