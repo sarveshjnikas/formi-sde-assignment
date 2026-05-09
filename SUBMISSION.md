@@ -7,7 +7,7 @@
 
 ## 1. Assumptions
 
-_State every assumption you made about the business, system, or environment. Be specific. These will be discussed in the follow-up._
+<!-- _State every assumption you made about the business, system, or environment. Be specific. These will be discussed in the follow-up._ -->
 
 1. The LLM provider’s limits (requests/minute and tokens/minute) are strict, and if we exceed them we’ll get 429s—so the right fix is to schedule/throttle requests, not just “retry later.”
 2. Every call interaction belongs to one customer, and I should be able to trace/attribute any LLM token spend back to that customer and that interaction (and campaign/session where available).
@@ -115,14 +115,14 @@ Current behavior is simple and predictable: unused headroom is not redistributed
 
 ## 6. Differentiated Processing
 
-I model urgency using `lane` on `postcall_jobs`: `hot`, `cold`, `skip` (this matches the intent of `tests/fixtures/sample_transcripts.json`).
+I model urgency using `lane` on `postcall_jobs`: `hot`, `cold`, `skip`.
 
-In the current implementation, lane is hardcoded to `cold` with a TODO. Intended mechanism:
+- `skip`: turn count < 4 → no LLM job created, downstream still runs.
+- `hot` vs `cold`: determined at ingest by `lane_classifier.classify_lane()`, a regex-based keyword classifier that runs synchronously on the transcript text before any jobs are enqueued. Cold overrides are checked first so phrases like "already booked" or "call me back" don't false-positive as hot.
 
-- `skip`: short transcript (<4 turns) → no LLM job created.
-- `hot` vs `cold`: either a lightweight classification step (fast/cheap) or a business-provided flag decides urgency.
+In production, hot/cold would be refined by having the LLM return a `lane` field as part of its existing analysis response — zero additional token cost. The keyword classifier handles the skip gate (free, instant) and serves as the triage fallback when the LLM result isn't yet available.
 
-I kept lane selection out of the first pass to keep changes surgical and focus on the “Must implement” items.
+Hot jobs are enqueued with `lane="hot"` on all three job types (recording, llm, downstream). The worker claim query orders by `available_at ASC` — prioritising hot over cold requires either a separate hot queue or adding `lane` to the ORDER BY. That is the next implementation step.
 
 ---
 
@@ -142,7 +142,7 @@ Visibility:
 
 ## 8. Reliability & Durability
 
-_How do you ensure no analysis result is permanently lost?_
+<!-- _How do you ensure no analysis result is permanently lost?_ -->
 
 - All work is represented as rows in `postcall_jobs` (durable).
 - Workers claim jobs atomically (`FOR UPDATE SKIP LOCKED`) and attach a lease (`lease_expires_at`) so crashes don’t stall work forever.
@@ -152,7 +152,7 @@ _How do you ensure no analysis result is permanently lost?_
 
 ## 9. Auditability & Observability
 
-_How would you debug a specific failed interaction 3 days after the fact?_
+<!-- _How would you debug a specific failed interaction 3 days after the fact?_ -->
 
 ### What you log (and what fields every log event includes)
 
@@ -168,7 +168,7 @@ _How would you debug a specific failed interaction 3 days after the fact?_
 
 ## 10. Data Model
 
-_Schema changes required. Show the SQL._
+<!-- _Schema changes required. Show the SQL._ -->
 
 ```sql
 -- Audit trail
@@ -287,7 +287,7 @@ CREATE TABLE customer_llm_budget_windows (
 
 ## 12. API Interface
 
-_Did you change the API contract (`POST /session/.../end`)? If yes, explain why. If no, explain why you kept it._
+<!-- _Did you change the API contract (`POST /session/.../end`)? If yes, explain why. If no, explain why you kept it._ -->
 
 I kept the API contract the same because it matches the telephony provider webhook expectations and needs to return quickly.
 
@@ -310,20 +310,18 @@ The main change is internal: on call-end the endpoint writes durable jobs (`reco
 
 ## 14. Known Weaknesses
 
-_What are the gaps in your design? What would you address next?_
-
-- Lane selection is currently hardcoded to `cold` (no hot/cold/skip prioritization yet).
 - `requeue_stale_claims(...)` exists but needs a periodic watchdog runner in production.
 - Rate limiting is per-minute windows (safe and simple) rather than a smoother token bucket over sub-minute intervals.
+- Hot jobs are classified correctly at ingest but not yet prioritised ahead of cold jobs in the worker claim query — `lane` needs to be added to the `ORDER BY` in `claim_next_job`.
 - Downstream job currently uses placeholder analysis payload; wiring it to consume stored LLM output cleanly would be the next integration step.
 
 ---
 
 ## 15. What I Would Do With More Time
 
-_Specific, prioritised list — not a generic wishlist._
+<!-- _Specific, prioritised list — not a generic wishlist._ -->
 
-1. Implement lane classification (`hot/cold/skip`) and prioritize `hot` jobs (using the provided transcript fixtures as test cases).
+1. Prioritize `hot` jobs in the worker claim query by adding `lane` to the `ORDER BY` in `claim_next_job` (`hot` before `cold`, within the same `available_at` window).
 2. Add a small watchdog process to run `requeue_stale_claims(...)` periodically and emit audit events for recovered jobs.
 3. Persist actual token usage as a billing-grade ledger (customer/campaign/interaction) rather than only audit events.
 4. Add a DB-backed end-to-end integration test that runs the workers against a real Postgres container.
